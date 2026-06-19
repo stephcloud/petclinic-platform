@@ -3,13 +3,13 @@
 ## EXACT VALUES (copy these exactly — never use placeholders)
 
 - **AWS Account:** 720035686687
-- **AWS Region:** us-east-1
+- **AWS Region:** eu-central-1
 - **AWS Profile:** chelsea-cloud
 - **S3 Bucket:** petclinic-terraform-state-720035686687
 - **K8s Version:** 1.32 (never 1.29)
 - **Backend:** use_lockfile = true (NOT dynamodb_table)
-- **ECR Dev:** 720035686687.dkr.ecr.us-east-1.amazonaws.com/petclinic-dev
-- **ECR Prod:** 720035686687.dkr.ecr.us-east-1.amazonaws.com/petclinic-prod
+- **ECR Dev:** 720035686687.dkr.ecr.eu-central-1.amazonaws.com/petclinic-dev
+- **ECR Prod:** 720035686687.dkr.ecr.eu-central-1.amazonaws.com/petclinic-prod
 - **Docker Platform:** linux/amd64 (not ARM)
 - **Node Type:** t3.medium (x86)
 

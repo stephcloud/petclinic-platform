@@ -151,8 +151,6 @@ resource "aws_vpc_security_group_ingress_rule" "eks_node_self" {
 
   description                  = "Inter-node communication"
   ip_protocol                  = "-1"
-  from_port                    = 0
-  to_port                      = 65535
   referenced_security_group_id = aws_security_group.eks_node.id
 }
 

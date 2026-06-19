@@ -9,12 +9,8 @@ locals {
     var.tags
   )
 
-  addon_versions = {
-    coredns           = "v1.11.1-eksbuild.4"
-    kube-proxy        = "v1.32.0-eksbuild.1"
-    vpc-cni           = "v1.16.0-eksbuild.1"
-    aws-ebs-csi-driver = "v1.26.1-eksbuild.1"
-  }
+  # Addon versions intentionally omitted — AWS will use the default version
+  # for the current Kubernetes cluster version.
 }
 
 # ---------------------------------------------------------------------------
@@ -86,6 +82,46 @@ resource "aws_iam_openid_connect_provider" "cluster" {
 }
 
 # ---------------------------------------------------------------------------
+# EBS CSI Driver IRSA Role
+# ---------------------------------------------------------------------------
+data "aws_iam_policy_document" "ebs_csi_assume_role" {
+  statement {
+    effect = "Allow"
+
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.cluster.arn]
+    }
+
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "${replace(aws_iam_openid_connect_provider.cluster.url, "https://", "")}:sub"
+      values   = ["system:serviceaccount:kube-system:ebs-csi-controller-sa"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${replace(aws_iam_openid_connect_provider.cluster.url, "https://", "")}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "ebs_csi" {
+  name               = "${local.name_prefix}-ebs-csi-driver-role"
+  assume_role_policy = data.aws_iam_policy_document.ebs_csi_assume_role.json
+
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "ebs_csi" {
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+  role       = aws_iam_role.ebs_csi.name
+}
+
+# ---------------------------------------------------------------------------
 # Node Group IAM Role
 # ---------------------------------------------------------------------------
 data "aws_iam_policy_document" "node_assume_role" {
@@ -133,12 +169,20 @@ resource "aws_launch_template" "node" {
 
   tag_specifications {
     resource_type = "instance"
-    tags = merge(local.common_tags, { Name = "${local.name_prefix}-node" })
+    tags          = merge(local.common_tags, { Name = "${local.name_prefix}-node" })
   }
 
   tag_specifications {
     resource_type = "volume"
-    tags = merge(local.common_tags, { Name = "${local.name_prefix}-node-volume" })
+    tags          = merge(local.common_tags, { Name = "${local.name_prefix}-node-volume" })
+  }
+
+  block_device_mappings {
+    device_name = "/dev/xvda"
+    ebs {
+      volume_size = var.node_disk_size
+      volume_type = "gp3"
+    }
   }
 
   tags = local.common_tags
@@ -156,7 +200,6 @@ resource "aws_eks_node_group" "main" {
   ami_type       = "AL2_ARM_64"
   capacity_type  = "ON_DEMAND"
   instance_types = var.node_instance_types
-  disk_size      = var.node_disk_size
 
   launch_template {
     id      = aws_launch_template.node.id
@@ -178,7 +221,6 @@ resource "aws_eks_node_group" "main" {
 resource "aws_eks_addon" "coredns" {
   cluster_name                = aws_eks_cluster.main.name
   addon_name                  = "coredns"
-  addon_version               = local.addon_versions["coredns"]
   resolve_conflicts_on_create = "OVERWRITE"
   resolve_conflicts_on_update = "OVERWRITE"
 
@@ -188,7 +230,6 @@ resource "aws_eks_addon" "coredns" {
 resource "aws_eks_addon" "kube_proxy" {
   cluster_name                = aws_eks_cluster.main.name
   addon_name                  = "kube-proxy"
-  addon_version               = local.addon_versions["kube-proxy"]
   resolve_conflicts_on_create = "OVERWRITE"
   resolve_conflicts_on_update = "OVERWRITE"
 }
@@ -196,7 +237,6 @@ resource "aws_eks_addon" "kube_proxy" {
 resource "aws_eks_addon" "vpc_cni" {
   cluster_name                = aws_eks_cluster.main.name
   addon_name                  = "vpc-cni"
-  addon_version               = local.addon_versions["vpc-cni"]
   resolve_conflicts_on_create = "OVERWRITE"
   resolve_conflicts_on_update = "OVERWRITE"
 }
@@ -204,7 +244,7 @@ resource "aws_eks_addon" "vpc_cni" {
 resource "aws_eks_addon" "ebs_csi" {
   cluster_name                = aws_eks_cluster.main.name
   addon_name                  = "aws-ebs-csi-driver"
-  addon_version               = local.addon_versions["aws-ebs-csi-driver"]
+  service_account_role_arn    = aws_iam_role.ebs_csi.arn
   resolve_conflicts_on_create = "OVERWRITE"
   resolve_conflicts_on_update = "OVERWRITE"
 
