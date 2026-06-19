@@ -24,3 +24,18 @@ module "eks" {
   eks_cluster_sg_id = module.vpc.eks_cluster_sg_id
   eks_node_sg_id    = module.vpc.eks_node_sg_id
 }
+
+module "rds" {
+  source = "../../modules/rds"
+
+  environment           = var.environment
+  vpc_id                = module.vpc.vpc_id
+  subnet_ids            = module.vpc.public_subnet_ids
+  rds_security_group_id = module.vpc.rds_sg_id
+}
+
+module "ecr" {
+  source = "../../modules/ecr"
+
+  environment = var.environment
+}

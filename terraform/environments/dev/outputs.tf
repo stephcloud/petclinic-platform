@@ -34,3 +34,35 @@ output "node_role_arn" {
   description = "ARN of the IAM role assigned to EKS worker nodes"
   value       = module.eks.node_role_arn
 }
+
+# RDS outputs
+output "rds_endpoint" {
+  description = "RDS instance endpoint address"
+  value       = module.rds.endpoint
+}
+
+output "rds_port" {
+  description = "RDS instance port"
+  value       = module.rds.port
+}
+
+output "rds_instance_id" {
+  description = "RDS instance identifier"
+  value       = module.rds.db_instance_id
+}
+
+output "rds_secret_arn" {
+  description = "ARN of the Secrets Manager secret containing RDS credentials"
+  value       = module.rds.secret_arn
+}
+
+# ECR outputs
+output "ecr_repository_urls" {
+  description = "Map of service name to ECR repository URL"
+  value       = module.ecr.repository_urls
+}
+
+output "ecr_repository_arns" {
+  description = "Map of service name to ECR repository ARN"
+  value       = module.ecr.repository_arns
+}
