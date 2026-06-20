@@ -39,3 +39,11 @@ module "ecr" {
 
   environment = var.environment
 }
+
+module "secrets" {
+  source = "../../modules/secrets"
+
+  environment       = var.environment
+  oidc_provider_arn = module.eks.oidc_provider_arn
+  oidc_provider_url = module.eks.oidc_provider_url
+}

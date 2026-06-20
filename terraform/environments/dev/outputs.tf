@@ -66,3 +66,14 @@ output "ecr_repository_arns" {
   description = "Map of service name to ECR repository ARN"
   value       = module.ecr.repository_arns
 }
+
+# Secrets outputs
+output "eso_role_arn" {
+  description = "IAM role ARN for External Secrets Operator (IRSA)"
+  value       = module.secrets.eso_role_arn
+}
+
+output "openai_secret_arn" {
+  description = "ARN of the OpenAI API key secret in Secrets Manager"
+  value       = module.secrets.openai_secret_arn
+}
