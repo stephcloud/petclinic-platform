@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: admin-server-prod
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: admin-server
+    app.kubernetes.io/part-of: petclinic
+    app.kubernetes.io/managed-by: ArgoCD
+    app.kubernetes.io/component: infrastructure
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/stephcloud/petclinic-platform.git
+    targetRevision: main
+    path: helm/petclinic-service
+    helm:
+      valueFiles:
+        - ../../helm-values/admin-server.yaml
+        - ../../helm-values/prod.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: petclinic-prod
