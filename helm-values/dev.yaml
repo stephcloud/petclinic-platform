@@ -1,0 +1,9 @@
+replicaCount: 1
+
+namespace: petclinic-dev
+
+autoscaling:
+  enabled: false
+
+pdb:
+  enabled: false

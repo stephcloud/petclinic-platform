@@ -1,0 +1,28 @@
+nameOverride: discovery-server
+namespace: petclinic-dev
+
+service:
+  port: 8761
+
+image:
+  repository: 720035686687.dkr.ecr.eu-central-1.amazonaws.com/petclinic-dev/discovery-server
+  tag: v1.0.0
+
+labels:
+  app.kubernetes.io/component: infrastructure
+
+env:
+  - name: SPRING_PROFILES_ACTIVE
+    value: docker
+
+initContainers:
+  - name: wait-for-config-server
+    image: busybox:1.36
+    command: ['sh', '-c', 'until wget -qO- http://config-server:8888/actuator/health; do sleep 5; done']
+    resources:
+      requests:
+        cpu: 10m
+        memory: 16Mi
+      limits:
+        cpu: 50m
+        memory: 64Mi

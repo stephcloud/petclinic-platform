@@ -1,0 +1,18 @@
+nameOverride: config-server
+namespace: petclinic-dev
+
+service:
+  port: 8888
+
+image:
+  repository: 720035686687.dkr.ecr.eu-central-1.amazonaws.com/petclinic-dev/config-server
+  tag: v1.0.0
+
+labels:
+  app.kubernetes.io/component: infrastructure
+
+env:
+  - name: SPRING_PROFILES_ACTIVE
+    value: docker
+
+initContainers: []

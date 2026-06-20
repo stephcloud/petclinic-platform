@@ -1,0 +1,58 @@
+nameOverride: customers-service
+namespace: petclinic-dev
+
+service:
+  port: 8081
+
+image:
+  repository: 720035686687.dkr.ecr.eu-central-1.amazonaws.com/petclinic-dev/customers-service
+  tag: v1.0.0
+
+labels:
+  app.kubernetes.io/component: backend
+
+configMap:
+  enabled: true
+  data:
+    SPRING_DATASOURCE_URL: "jdbc:mysql://petclinic-dev-mysql.ch40i6gwk9jk.eu-central-1.rds.amazonaws.com:3306/petclinic"
+
+env:
+  - name: SPRING_PROFILES_ACTIVE
+    value: docker,mysql
+  - name: SPRING_DATASOURCE_URL
+    valueFrom:
+      configMapKeyRef:
+        name: customers-service-config
+        key: SPRING_DATASOURCE_URL
+  - name: SPRING_DATASOURCE_USERNAME
+    valueFrom:
+      secretKeyRef:
+        name: rds-credentials
+        key: username
+  - name: SPRING_DATASOURCE_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: rds-credentials
+        key: password
+
+initContainers:
+  - name: wait-for-config-server
+    image: busybox:1.36
+    command: ['sh', '-c', 'until wget -qO- http://config-server:8888/actuator/health; do sleep 5; done']
+    resources:
+      requests:
+        cpu: 10m
+        memory: 16Mi
+      limits:
+        cpu: 50m
+        memory: 64Mi
+  - name: wait-for-discovery-server
+    image: busybox:1.36
+    command: ['sh', '-c', 'until wget -qO- http://discovery-server:8761/actuator/health; do sleep 5; done']
+    resources:
+      requests:
+        cpu: 10m
+        memory: 16Mi
+      limits:
+        cpu: 50m
+        memory: 64Mi
