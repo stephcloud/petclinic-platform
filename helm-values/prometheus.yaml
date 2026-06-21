@@ -1,0 +1,147 @@
+## helm-values/prometheus.yaml
+## Values for kube-prometheus-stack Helm chart (prometheus-community)
+## Targets: monitoring namespace, scrapes all 8 Petclinic services in petclinic-dev
+
+namespaceOverride: monitoring
+
+# ------------------------------------------------------------------------------
+# Prometheus
+# ------------------------------------------------------------------------------
+prometheus:
+  prometheusSpec:
+    # Scrape all Petclinic services via Kubernetes service discovery in petclinic-dev
+    additionalScrapeConfigs:
+      - job_name: spring-petclinic-services
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - petclinic-dev
+        relabel_configs:
+          # Keep only our 8 known services
+          - source_labels:
+              - __meta_kubernetes_service_name
+            action: keep
+            regex: '(config-server|discovery-server|api-gateway|customers-service|visits-service|vets-service|genai-service|admin-server)'
+          # Keep only the main HTTP port endpoint
+          - source_labels:
+              - __meta_kubernetes_endpoint_port_name
+            action: keep
+            regex: http
+          # Relabel metadata
+          - source_labels:
+              - __meta_kubernetes_service_name
+            target_label: job
+          - source_labels:
+              - __meta_kubernetes_pod_name
+            target_label: pod
+          - source_labels:
+              - __meta_kubernetes_namespace
+            target_label: namespace
+          # Config Server: use /manage/prometheus because Spring Cloud Config
+          # intercepts /actuator/prometheus as a config lookup
+          - source_labels:
+              - __meta_kubernetes_service_name
+            regex: config-server
+            target_label: __metrics_path__
+            replacement: /manage/prometheus
+        # Spring Boot actuator Prometheus endpoint
+        metrics_path: /actuator/prometheus
+        # Tuned scrape interval for dev
+        scrape_interval: 30s
+        scrape_timeout: 10s
+
+    # Resource limits aligned with project standard (128Mi req / 512Mi limit)
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+
+    # Retention for dev
+    retention: 7d
+
+    # Storage for dev — 10Gi, matching project conventions
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp2
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 10Gi
+
+# ------------------------------------------------------------------------------
+# Grafana
+# ------------------------------------------------------------------------------
+grafana:
+  enabled: true
+  namespaceOverride: monitoring
+
+  # No ingress — access via kubectl port-forward only
+  ingress:
+    enabled: false
+
+  adminUser: admin
+  adminPassword: admin
+
+  # Default image tag — pinned, not :latest
+  image:
+    tag: 10.4.1
+
+  # Resources
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # Prometheus datasource is auto-provisioned by kube-prometheus-stack;
+  # Loki datasource will be added in Phase 2.
+
+# ------------------------------------------------------------------------------
+# Alertmanager
+# ------------------------------------------------------------------------------
+alertmanager:
+  enabled: true
+  config:
+    global:
+      smtp_smarthost: ""
+      smtp_from: ""
+    route:
+      receiver: default
+      group_by:
+        - alertname
+        - namespace
+    receivers:
+      - name: default
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+# ------------------------------------------------------------------------------
+# Node Exporter
+# ------------------------------------------------------------------------------
+prometheus-node-exporter:
+  enabled: true
+
+# ------------------------------------------------------------------------------
+# kube-state-metrics
+# ------------------------------------------------------------------------------
+kube-state-metrics:
+  enabled: true
+
+# ------------------------------------------------------------------------------
+# Disable anything that requires external dependencies or ingress
+# ------------------------------------------------------------------------------
+# No ingress controllers or load balancers for observability UI

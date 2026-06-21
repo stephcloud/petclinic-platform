@@ -15,17 +15,19 @@ labels:
 env:
   - name: SPRING_PROFILES_ACTIVE
     value: docker
+  - name: MANAGEMENT_ENDPOINTS_WEB_BASEPATH
+    value: /manage
 
 probes:
   readiness:
     httpGet:
-      path: /actuator/health
+      path: /manage/health
       port: http
     initialDelaySeconds: 30
     periodSeconds: 10
   liveness:
     httpGet:
-      path: /actuator/health
+      path: /manage/health
       port: http
     initialDelaySeconds: 60
     periodSeconds: 15
