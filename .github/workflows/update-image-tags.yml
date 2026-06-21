@@ -1,0 +1,51 @@
+name: Update Image Tags
+
+on:
+  repository_dispatch:
+    types:
+      - app-image-pushed
+
+jobs:
+  update-tags:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install yq
+        run: |
+          wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          chmod +x /usr/local/bin/yq
+
+      - name: Update helm values
+        id: update
+        run: |
+          SHA="${{ github.event.client_payload.sha }}"
+          SERVICES_JSON='${{ toJson(github.event.client_payload.services) }}'
+          SERVICES_LIST=$(echo "$SERVICES_JSON" | jq -r '. | join(", ")')
+
+          for service in $(echo "$SERVICES_JSON" | jq -r '.[]'); do
+            FILE="helm-values/${service}.yaml"
+            if [ -f "$FILE" ]; then
+              yq eval -i ".image.tag = \"$SHA\"" "$FILE"
+              echo "Updated $FILE → tag: $SHA"
+            else
+              echo "::warning::Helm values file not found: $FILE"
+            fi
+          done
+
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "services=$SERVICES_LIST" >> "$GITHUB_OUTPUT"
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit and push changes
+        run: |
+          SHA="${{ steps.update.outputs.sha }}"
+          SERVICES="${{ steps.update.outputs.services }}"
+          git add helm-values/*.yaml
+          git commit -m "ci: update image tags to $SHA ($SERVICES)" || echo "No changes to commit"
+          git push

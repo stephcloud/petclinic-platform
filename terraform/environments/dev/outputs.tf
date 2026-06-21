@@ -77,3 +77,9 @@ output "openai_secret_arn" {
   description = "ARN of the OpenAI API key secret in Secrets Manager"
   value       = module.secrets.openai_secret_arn
 }
+
+# GitHub Actions outputs
+output "github_actions_role_arn" {
+  description = "IAM role ARN for GitHub Actions OIDC federation"
+  value       = aws_iam_role.github_actions.arn
+}
