@@ -1,0 +1,48 @@
+## helm-values/fluent-bit.yaml
+## Values for Fluent Bit Helm chart (fluent/fluent-bit) — forwards container logs to Loki
+## Deployed as DaemonSet across dev EKS nodes, outputting to Loki in monitoring namespace
+
+## Read-only root filesystem is default; keep it for security
+## https://github.com/fluent/helm-charts/tree/main/charts/fluent-bit
+
+config:
+  ## Input: tail Kubernetes container logs
+  inputs: |
+    [INPUT]
+        Name tail
+        Path /var/log/containers/*.log
+        multiline.parser docker, cri
+        Tag kube.*
+        Mem_Buf_Limit 5MB
+        Skip_Long_Lines On
+    [INPUT]
+        Name systemd
+        Tag host.*
+        Systemd_Filter _SYSTEMD_UNIT=kubelet.service
+        Read_From_Tail On
+
+  ## Filter: enrich with Kubernetes metadata
+  filters: |
+    [FILTER]
+        Name kubernetes
+        Match kube.*
+        Merge_Log On
+        Keep_Log Off
+        K8S-Logging.Parser On
+        K8S-Logging.Exclude On
+
+  ## Output: send logs to Loki in monitoring namespace
+  outputs: |
+    [OUTPUT]
+        Name loki
+        Match kube.*
+        Host loki.monitoring
+        Port 3100
+        Labels job=fluentbit,namespace=$kubernetes['namespace_name'],pod=$kubernetes['pod_name']
+        Auto_Kubernetes_Labels on
+    [OUTPUT]
+        Name loki
+        Match host.*
+        Host loki.monitoring
+        Port 3100
+        Labels job=fluentbit,source=node

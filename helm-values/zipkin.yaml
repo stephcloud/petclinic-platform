@@ -1,0 +1,13 @@
+## helm-values/zipkin.yaml
+## NOT a Helm values file — Zipkin is deployed via raw Kubernetes manifests
+## because there is no actively maintained official Zipkin Helm chart in the
+## standard repositories used by this project.
+##
+## This file documents the Zipkin deployment parameters:
+##   - Namespace: monitoring
+##   - Image: openzipkin/zipkin:latest
+##   - Port: 9411 (HTTP API and UI)
+##   - Resource limits: 256Mi / 512Mi (matching project standards)
+##
+## To redeploy Zipkin run:
+##   kubectl apply -f helm-values/zipkin-deployment.yaml

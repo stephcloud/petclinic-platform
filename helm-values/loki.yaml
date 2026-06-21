@@ -1,0 +1,103 @@
+## helm-values/loki.yaml
+## Values for Grafana Loki Helm chart (grafana/loki) — SingleBinary mode for dev
+## Deployed to monitoring namespace for Petclinic dev EKS
+
+# Single binary deployment mode (monolithic, simplest for dev)
+deploymentMode: SingleBinary
+
+# Disable other deployment mode components
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
+ingester:
+  replicas: 0
+querier:
+  replicas: 0
+queryFrontend:
+  replicas: 0
+queryScheduler:
+  replicas: 0
+distributor:
+  replicas: 0
+compactor:
+  replicas: 0
+indexGateway:
+  replicas: 0
+bloomCompactor:
+  replicas: 0
+bloomGateway:
+  replicas: 0
+
+# Loki configuration
+loki:
+  auth_enabled: false
+
+  # Use filesystem storage (no external object store needed for single binary)
+  storage:
+    type: filesystem
+
+  commonConfig:
+    replication_factor: 1
+
+  schemaConfig:
+    configs:
+      - from: "2025-01-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+
+  # Compactor with retention enabled
+  compactor:
+    working_directory: /var/loki/compactor
+    compaction_interval: 10m
+    retention_enabled: true
+    retention_delete_delay: 2h
+    retention_delete_worker_count: 150
+    delete_request_store: filesystem
+
+  # 7-day log retention
+  limits_config:
+    retention_period: 168h
+    reject_old_samples: true
+    reject_old_samples_max_age: 168h
+    max_entries_limit_per_query: 5000
+
+  # Disable tracing to reduce noise
+  tracing:
+    enabled: false
+
+# Single binary pod config
+singleBinary:
+  replicas: 1
+
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: gp2
+    accessModes:
+      - ReadWriteOnce
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Disable optional caching, canary, and helm tests to simplify dev deployment
+chunksCache:
+  enabled: false
+resultsCache:
+  enabled: false
+lokiCanary:
+  enabled: false
+test:
+  enabled: false
+
