@@ -1,4 +1,5 @@
 nameOverride: discovery-server
+fullnameOverride: discovery-server
 namespace: petclinic-dev
 
 service:

@@ -1,4 +1,5 @@
 nameOverride: config-server
+fullnameOverride: config-server
 namespace: petclinic-dev
 
 service:
