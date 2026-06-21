@@ -1,4 +1,5 @@
 nameOverride: vets-service
+fullnameOverride: vets-service
 namespace: petclinic-dev
 
 service:

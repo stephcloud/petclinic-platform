@@ -1,4 +1,5 @@
 nameOverride: customers-service
+fullnameOverride: customers-service
 namespace: petclinic-dev
 
 service:
