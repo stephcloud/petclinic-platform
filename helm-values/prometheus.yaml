@@ -38,13 +38,13 @@ prometheus:
           - source_labels:
               - __meta_kubernetes_namespace
             target_label: namespace
-          # Config Server: use /manage/prometheus because Spring Cloud Config
-          # intercepts /actuator/prometheus as a config lookup
+          # Config Server: use /prometheus because we moved actuator base path
+          # to root to avoid Spring Cloud Config URL collision
           - source_labels:
               - __meta_kubernetes_service_name
             regex: config-server
             target_label: __metrics_path__
-            replacement: /manage/prometheus
+            replacement: /prometheus
         # Spring Boot actuator Prometheus endpoint
         metrics_path: /actuator/prometheus
         # Tuned scrape interval for dev
