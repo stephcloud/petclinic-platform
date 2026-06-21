@@ -197,7 +197,7 @@ resource "aws_eks_node_group" "main" {
   node_role_arn   = aws_iam_role.node.arn
   subnet_ids      = var.subnet_ids
 
-  ami_type       = "AL2_ARM_64"
+  ami_type       = "AL2_x86_64"
   capacity_type  = "ON_DEMAND"
   instance_types = var.node_instance_types
 

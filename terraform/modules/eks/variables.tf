@@ -67,5 +67,5 @@ variable "node_disk_size" {
 variable "node_instance_types" {
   description = "EC2 instance types for the managed node group"
   type        = list(string)
-  default     = ["t4g.small"]
+  default     = ["c7i-flex.large"]
 }
