@@ -16,7 +16,7 @@ env:
   - name: SPRING_PROFILES_ACTIVE
     value: docker
   - name: MANAGEMENT_ENDPOINTS_WEB_BASEPATH
-    value: "/"
+    value: ""
 
 probes:
   readiness:
