@@ -1,4 +1,5 @@
 nameOverride: api-gateway
+fullnameOverride: api-gateway
 namespace: petclinic-dev
 
 service:

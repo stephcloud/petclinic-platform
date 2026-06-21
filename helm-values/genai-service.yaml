@@ -1,4 +1,5 @@
 nameOverride: genai-service
+fullnameOverride: genai-service
 namespace: petclinic-dev
 
 service:

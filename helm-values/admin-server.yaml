@@ -1,4 +1,5 @@
 nameOverride: admin-server
+fullnameOverride: admin-server
 namespace: petclinic-dev
 
 service:
