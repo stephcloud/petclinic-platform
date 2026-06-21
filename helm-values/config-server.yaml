@@ -15,19 +15,19 @@ labels:
 env:
   - name: SPRING_PROFILES_ACTIVE
     value: docker
-  - name: MANAGEMENT_ENDPOINTS_WEB_BASEPATH
-    value: /mgmt/act
+  - name: MANAGEMENT_SERVER_PORT
+    value: "9000"
 
 probes:
   readiness:
     httpGet:
-      path: /mgmt/act/health
+      path: /actuator/health
       port: http
     initialDelaySeconds: 30
     periodSeconds: 10
   liveness:
     httpGet:
-      path: /mgmt/act/health
+      path: /actuator/health
       port: http
     initialDelaySeconds: 60
     periodSeconds: 15
