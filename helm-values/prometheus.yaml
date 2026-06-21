@@ -11,7 +11,6 @@ prometheus:
   prometheusSpec:
     # Scrape all Petclinic services via Kubernetes service discovery in petclinic-dev
     additionalScrapeConfigs:
-      # Main job: 7 services that expose /actuator/prometheus on the HTTP port
       - job_name: spring-petclinic-services
         kubernetes_sd_configs:
           - role: endpoints
@@ -19,11 +18,15 @@ prometheus:
               names:
                 - petclinic-dev
         relabel_configs:
-          # Keep only 7 known services (exclude config-server — scraped via separate job)
+          # Keep only scrapeable services (5 services that expose /actuator/prometheus).
+          # Excluded services require app-level changes:
+          #   - config-server: Spring Cloud Config intercepts /actuator/prometheus
+          #   - discovery-server: missing micrometer-registry-prometheus dependency
+          #   - admin-server: missing micrometer-registry-prometheus dependency
           - source_labels:
               - __meta_kubernetes_service_name
             action: keep
-            regex: '(discovery-server|api-gateway|customers-service|visits-service|vets-service|genai-service|admin-server)'
+            regex: '(api-gateway|customers-service|visits-service|vets-service|genai-service)'
           # Keep only the main HTTP port endpoint
           - source_labels:
               - __meta_kubernetes_endpoint_port_name
@@ -33,34 +36,6 @@ prometheus:
           - source_labels:
               - __meta_kubernetes_service_name
             target_label: job
-          - source_labels:
-              - __meta_kubernetes_pod_name
-            target_label: pod
-          - source_labels:
-              - __meta_kubernetes_namespace
-            target_label: namespace
-        metrics_path: /actuator/prometheus
-        scrape_interval: 30s
-        scrape_timeout: 10s
-
-      # Dedicated job for config-server: management port 9000 avoids Spring Cloud
-      # Config Server URL collision on port 8888
-      - job_name: config-server
-        kubernetes_sd_configs:
-          - role: pod
-            namespaces:
-              names:
-                - petclinic-dev
-        relabel_configs:
-          - source_labels:
-              - __meta_kubernetes_pod_label_app_kubernetes_io_name
-            action: keep
-            regex: config-server
-          - source_labels:
-              - __address__
-            regex: ([^:]+):.*
-            target_label: __address__
-            replacement: ${1}:9000
           - source_labels:
               - __meta_kubernetes_pod_name
             target_label: pod

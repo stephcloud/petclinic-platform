@@ -15,8 +15,6 @@ labels:
 env:
   - name: SPRING_PROFILES_ACTIVE
     value: docker
-  - name: MANAGEMENT_SERVER_PORT
-    value: "9000"
 
 probes:
   readiness:
