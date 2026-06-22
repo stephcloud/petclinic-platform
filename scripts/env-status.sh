@@ -2,68 +2,24 @@
 set -euo pipefail
 
 #
-# env-status.sh — Check the current state of your AWS environment
+# env-status.sh — Show dev environment status
 #
-# Shows whether EKS nodes and RDS are running, stopped, or missing.
-# Useful before starting/stopping to know current state.
+# Displays EKS nodegroup config, node readiness, pod status in
+# petclinic-dev and monitoring, and estimated daily cost.
 #
 # Usage:
-#   ./scripts/env-status.sh dev
-#   ./scripts/env-status.sh prod
+#   ./scripts/env-status.sh
 #
 
-REGION="${AWS_DEFAULT_REGION:-eu-central-1}"
-
-usage() {
-  echo "Usage: $0 <environment>"
-  echo "  environment: dev | prod"
-  echo ""
-  echo "Examples:"
-  echo "  $0 dev      # Check dev environment status"
-  echo "  $0 prod     # Check prod environment status"
-  exit 1
-}
-
-if [[ $# -ne 1 ]]; then
-  usage
-fi
-
-ENV="$1"
-if [[ "$ENV" != "dev" && "$ENV" != "prod" ]]; then
-  echo "Error: environment must be 'dev' or 'prod'"
-  usage
-fi
-
-CLUSTER_NAME="petclinic-${ENV}"
-NODEGROUP_NAME="petclinic-${ENV}-nodes"
-RDS_INSTANCE_ID="petclinic-${ENV}-mysql"
+REGION="eu-central-1"
+PROFILE="chelsea-cloud"
+CLUSTER_NAME="petclinic-dev"
+NODEGROUP_NAME="petclinic-dev-nodes"
 
 echo "============================================"
-echo "  Environment Status: ${ENV}"
+echo "  Environment Status: dev"
 echo "  Region: ${REGION}"
 echo "============================================"
-echo ""
-
-# --- EKS Cluster ---
-echo "--- EKS Cluster: ${CLUSTER_NAME} ---"
-
-CLUSTER_STATUS=$(aws eks describe-cluster \
-  --name "${CLUSTER_NAME}" \
-  --region "${REGION}" \
-  --query 'cluster.status' \
-  --output text 2>/dev/null || echo "NOT FOUND")
-
-echo "  Cluster status: ${CLUSTER_STATUS}"
-
-if [[ "${CLUSTER_STATUS}" != "NOT FOUND" ]]; then
-  CLUSTER_VERSION=$(aws eks describe-cluster \
-    --name "${CLUSTER_NAME}" \
-    --region "${REGION}" \
-    --query 'cluster.version' \
-    --output text)
-  echo "  Kubernetes version: ${CLUSTER_VERSION}"
-fi
-
 echo ""
 
 # --- EKS Node Group ---
@@ -73,6 +29,7 @@ NODEGROUP_STATUS=$(aws eks describe-nodegroup \
   --cluster-name "${CLUSTER_NAME}" \
   --nodegroup-name "${NODEGROUP_NAME}" \
   --region "${REGION}" \
+  --profile "${PROFILE}" \
   --query 'nodegroup.status' \
   --output text 2>/dev/null || echo "NOT FOUND")
 
@@ -81,109 +38,81 @@ if [[ "${NODEGROUP_STATUS}" == "NOT FOUND" ]]; then
 else
   echo "  Status: ${NODEGROUP_STATUS}"
 
-  SCALING_INFO=$(aws eks describe-nodegroup \
+  SCALING=$(aws eks describe-nodegroup \
     --cluster-name "${CLUSTER_NAME}" \
     --nodegroup-name "${NODEGROUP_NAME}" \
     --region "${REGION}" \
-    --query 'nodegroup.scalingConfig.{min:minSize,max:maxSize,desired:desiredSize}' \
-    --output text)
+    --profile "${PROFILE}" \
+    --query 'nodegroup.scalingConfig' \
+    --output json)
 
-  DESIRED=$(echo "${SCALING_INFO}" | awk '{print $1}')
-  MAX=$(echo "${SCALING_INFO}" | awk '{print $2}')
-  MIN=$(echo "${SCALING_INFO}" | awk '{print $3}')
+  MIN=$(echo "${SCALING}" | grep -o '"minSize": [0-9]*' | awk '{print $2}')
+  MAX=$(echo "${SCALING}" | grep -o '"maxSize": [0-9]*' | awk '{print $2}')
+  DESIRED=$(echo "${SCALING}" | grep -o '"desiredSize": [0-9]*' | awk '{print $2}')
 
-  echo "  Nodes: desired=${DESIRED}, min=${MIN}, max=${MAX}"
+  echo "  Scaling: desired=${DESIRED:-?}, min=${MIN:-?}, max=${MAX:-?}"
 
   INSTANCE_TYPE=$(aws eks describe-nodegroup \
     --cluster-name "${CLUSTER_NAME}" \
     --nodegroup-name "${NODEGROUP_NAME}" \
     --region "${REGION}" \
+    --profile "${PROFILE}" \
     --query 'nodegroup.instanceTypes[0]' \
     --output text)
   echo "  Instance type: ${INSTANCE_TYPE}"
-
-  if [[ "${DESIRED}" == "0" ]]; then
-    echo "  ** PAUSED (scaled to 0) — no compute costs **"
-  fi
 fi
-
 echo ""
 
-# --- RDS Instance ---
-echo "--- RDS Instance: ${RDS_INSTANCE_ID} ---"
+# --- Nodes ---
+echo "--- Kubernetes Nodes ---"
+READY_COUNT=$(kubectl get nodes --no-headers 2>/dev/null | grep -c " Ready " || true)
+TOTAL_COUNT=$(kubectl get nodes --no-headers 2>/dev/null | wc -l || true)
+echo "  Ready: ${READY_COUNT:-0} / ${TOTAL_COUNT:-0}"
+kubectl get nodes --no-headers 2>/dev/null || echo "  (unable to reach cluster — run start-env.sh first)"
+echo ""
 
-RDS_STATUS=$(aws rds describe-db-instances \
-  --db-instance-identifier "${RDS_INSTANCE_ID}" \
-  --region "${REGION}" \
-  --query 'DBInstances[0].DBInstanceStatus' \
-  --output text 2>/dev/null || echo "NOT FOUND")
+# --- Pods: petclinic-dev ---
+echo "--- Pods: petclinic-dev ---"
+kubectl get pods -n petclinic-dev --no-headers 2>/dev/null | head -n 15 || echo "  (namespace not found or cluster unreachable)"
+RUNNING_DEV=$(kubectl get pods -n petclinic-dev --no-headers 2>/dev/null | grep -c "Running" || true)
+TOTAL_DEV=$(kubectl get pods -n petclinic-dev --no-headers 2>/dev/null | wc -l || true)
+echo "  → ${RUNNING_DEV:-0}/${TOTAL_DEV:-0} Running"
+echo ""
 
-if [[ "${RDS_STATUS}" == "NOT FOUND" ]]; then
-  echo "  Status: NOT FOUND"
-else
-  echo "  Status: ${RDS_STATUS}"
-
-  RDS_CLASS=$(aws rds describe-db-instances \
-    --db-instance-identifier "${RDS_INSTANCE_ID}" \
-    --region "${REGION}" \
-    --query 'DBInstances[0].DBInstanceClass' \
-    --output text)
-  echo "  Instance class: ${RDS_CLASS}"
-
-  RDS_ENGINE=$(aws rds describe-db-instances \
-    --db-instance-identifier "${RDS_INSTANCE_ID}" \
-    --region "${REGION}" \
-    --query 'DBInstances[0].EngineVersion' \
-    --output text)
-  echo "  MySQL version: ${RDS_ENGINE}"
-
-  if [[ "${RDS_STATUS}" == "stopped" ]]; then
-    echo "  ** STOPPED — no compute costs **"
-    echo "  Note: AWS auto-restarts stopped RDS after 7 days."
-  fi
-fi
-
+# --- Pods: monitoring ---
+echo "--- Pods: monitoring ---"
+kubectl get pods -n monitoring --no-headers 2>/dev/null | head -n 15 || echo "  (namespace not found or cluster unreachable)"
+RUNNING_MON=$(kubectl get pods -n monitoring --no-headers 2>/dev/null | grep -c "Running" || true)
+TOTAL_MON=$(kubectl get pods -n monitoring --no-headers 2>/dev/null | wc -l || true)
+echo "  → ${RUNNING_MON:-0}/${TOTAL_MON:-0} Running"
 echo ""
 
 # --- Cost Estimate ---
 echo "--- Estimated Daily Cost ---"
 
-RUNNING_COST=0
-PAUSED_ITEMS=""
+EKS_CP_COST=3.30
+NODE_COST=3.50
+TOTAL_COST="${EKS_CP_COST}"
 
-# EKS control plane always costs
-echo "  EKS control plane:  ~\$3.30/day (always on)"
-RUNNING_COST=3.30
+echo "  EKS control plane:  ~\$${EKS_CP_COST}/day (always on)"
 
-if [[ "${NODEGROUP_STATUS}" != "NOT FOUND" && "${DESIRED}" != "0" ]]; then
-  echo "  EC2 nodes (${DESIRED}x ${INSTANCE_TYPE}): ~\$2-5/day"
-  RUNNING_COST=$(echo "$RUNNING_COST + 3.5" | bc 2>/dev/null || echo "$RUNNING_COST")
+if [[ "${DESIRED:-0}" != "0" ]]; then
+  echo "  EC2 nodes (t3.medium): ~\$${NODE_COST}/day (while running)"
+  TOTAL_COST=$(awk "BEGIN {printf \"%.2f\", $EKS_CP_COST + $NODE_COST}")
 else
-  PAUSED_ITEMS="${PAUSED_ITEMS}  EC2 nodes: \$0 (scaled to 0)\n"
-fi
-
-if [[ "${RDS_STATUS}" == "available" ]]; then
-  echo "  RDS (${RDS_CLASS}):  ~\$1-2/day"
-  RUNNING_COST=$(echo "$RUNNING_COST + 1.5" | bc 2>/dev/null || echo "$RUNNING_COST")
-elif [[ "${RDS_STATUS}" == "stopped" ]]; then
-  PAUSED_ITEMS="${PAUSED_ITEMS}  RDS: \$0 (stopped)\n"
-fi
-
-if [[ -n "${PAUSED_ITEMS}" ]]; then
-  echo ""
-  echo "  Paused (no charge):"
-  echo -e "${PAUSED_ITEMS}"
+  echo "  EC2 nodes:           ~\$0/day (scaled to 0)"
 fi
 
 echo ""
-echo "============================================"
-if [[ "${DESIRED:-0}" == "0" && "${RDS_STATUS}" == "stopped" ]]; then
-  echo "  Environment is PAUSED. Only EKS control plane costs apply."
-  echo "  Run: ./scripts/start-env.sh ${ENV}"
-elif [[ "${DESIRED:-0}" == "0" || "${RDS_STATUS}" == "stopped" ]]; then
-  echo "  Environment is PARTIALLY running."
+echo "  Total (approx):    ~\$${TOTAL_COST}/day"
+
+if [[ "${DESIRED:-0}" == "0" ]]; then
+  echo ""
+  echo "  ⏸  Environment is PAUSED — only control plane costs apply."
+  echo "     Run ./scripts/start-env.sh to resume."
 else
-  echo "  Environment is FULLY running."
-  echo "  Run: ./scripts/stop-env.sh ${ENV}  (when done for the day)"
+  echo ""
+  echo "  ▶  Environment is RUNNING."
+  echo "     Run ./scripts/stop-env.sh to pause."
 fi
 echo "============================================"
