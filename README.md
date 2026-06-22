@@ -136,16 +136,28 @@ This project is designed to stay within or near AWS Free Tier limits.
 | Resource | Free Tier | Cost When Active |
 |----------|-----------|-----------------|
 | EKS Control Plane | ❌ Not free — $0.10/hr (~$73/mo) | Always on while cluster exists |
-| EC2 t4g.small nodes | ✅ Graviton free trial 750hrs/mo until Dec 2026 | $0 |
-| RDS db.t4g.micro | ✅ 750hrs/mo for 12 months | $0 |
+| EC2 nodes | ⚠️ See note below | Varies |
+| RDS db.t3.micro | ✅ 750hrs/mo for 12 months | $0 |
 | ECR Storage | ✅ 500MB free, then $0.10/GB | ~$1/mo |
 | S3 (Terraform state) | ✅ 5GB free | ~$0 |
-| ALB | ✅ 750hrs/mo for 12 months | $0 |
+| ALB | ✅ 750hrs/mo for 12 months (not used in this build — see Phase 7 note) | $0 |
 
-> ⚠️ **IMPORTANT:** Always run `./scripts/stop-env.sh dev` at the end of every session.
-> This scales EKS nodes to 0 and stops RDS — saving ~$2/day in compute costs.
-> The EKS control plane (~$3.30/day) cannot be stopped without destroying it.
-> **Target: keep total AWS spend under $50 for the entire course.**
+> ⚠️ **IMPORTANT — Node instance type:** Some AWS free-credit accounts (e.g. AWS Builder/Activate credits)
+> **block On-Demand launches of standard instance types** like `t3.medium` or `t3.large` with the error
+> `InvalidParameterCombination — not eligible for Free Tier`, even though those types normally work fine on
+> a regular paid account. If you hit this, switch to a **Free Tier eligible** type instead — `c7i-flex.large`
+> worked reliably in this build. Always check what your account allows before assuming `t3.x` will launch.
+>
+> ⚠️ **IMPORTANT — Pod limits per node:** AWS caps the number of pods per EC2 instance based on its
+> **ENI/IP limit**, not CPU or memory. A `t3.medium` only allows ~11 pods total (including system pods like
+> kube-proxy, vpc-cni, coredns, ebs-csi). With 8 microservices + system pods, you WILL hit
+> `Too many pods` scheduling errors on small instance types. Use a `.large` or bigger instance type, or add
+> more nodes, before deploying all 8 services.
+>
+> ⚠️ Always run `./scripts/stop-env.sh` at the end of every session — this scales EKS nodes to 0.
+> The EKS control plane (~$3.30/day) **cannot be stopped without destroying the cluster** — it runs
+> 24/7 regardless of node count. If you're stepping away for several days, destroy and rebuild instead
+> (see Cost Reference section).
 
 ---
 
@@ -236,7 +248,7 @@ git --version
 ### Configure AWS CLI Profile
 
 ```bash
-aws configure --profile voh-admin
+aws configure --profile chelsea-cloud
 # AWS Access Key ID: (paste from CSV)
 # AWS Secret Access Key: (paste from CSV)
 # Default region name: eu-central-1
@@ -246,20 +258,20 @@ aws configure --profile voh-admin
 ### Verify AWS access
 
 ```bash
-aws sts get-caller-identity --profile voh-admin
+aws sts get-caller-identity --profile chelsea-cloud
 # Should return your account ID, user ARN
 ```
 
 ### Set profile for your session
 
 ```bash
-export AWS_PROFILE=voh-admin
+export AWS_PROFILE=chelsea-cloud
 export AWS_DEFAULT_REGION=eu-central-1
 ```
 
 > Add these exports to your `~/.bashrc` so they persist across sessions:
 > ```bash
-> echo 'export AWS_PROFILE=voh-admin' >> ~/.bashrc
+> echo 'export AWS_PROFILE=chelsea-cloud' >> ~/.bashrc
 > echo 'export AWS_DEFAULT_REGION=eu-central-1' >> ~/.bashrc
 > source ~/.bashrc
 > ```
@@ -410,7 +422,7 @@ terraform apply plan.out   # NEVER apply without a saved plan
 |---------|-----|------|
 | Region | eu-central-1 | eu-central-1 |
 | Namespace | petclinic-dev | petclinic-prod |
-| EKS nodes | 2x t4g.small ARM | 2x t4g.small ARM |
+| EKS nodes | 2x c7i-flex.large | 2x c7i-flex.large |
 | RDS | db.t4g.micro | db.t4g.micro |
 | Deploy | ArgoCD auto-sync | ArgoCD manual sync |
 
@@ -540,7 +552,7 @@ Before any Terraform can run, you need an S3 bucket and DynamoDB table to store 
 cd ~/petclinic-platform
 
 # Set your account ID
-export AWS_PROFILE=voh-admin
+export AWS_PROFILE=chelsea-cloud
 export AWS_DEFAULT_REGION=eu-central-1
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 echo "Your Account ID: $ACCOUNT_ID"
@@ -632,7 +644,7 @@ rds_sg_id, alb_sg_id. Include all 4 security groups (EKS cluster, EKS node, RDS,
 Write the EKS module in terraform/modules/eks/.
 Kubernetes version 1.29. Cluster IAM role with AmazonEKSClusterPolicy.
 OIDC provider from cluster identity issuer (required for IRSA).
-Managed node group: t4g.small (ARM64/Graviton), AL2_ARM_64 AMI,
+Managed node group: instance type per AGENTS.md (check free-tier eligibility first — see note above), AL2_x86_64 AMI,
 min=2 max=4 desired=2, disk=20GB. Node IAM role with
 AmazonEKSWorkerNodePolicy, AmazonEKS_CNI_Policy, AmazonEC2ContainerRegistryReadOnly.
 EKS managed add-ons: coredns, kube-proxy, vpc-cni, aws-ebs-csi-driver (pinned versions).
@@ -889,10 +901,23 @@ terraform/environments/dev/github-actions.tf:
 
 In your **app repo** (`spring-petclinic-microservices`) on GitHub:
 - Go to Settings → Secrets and variables → Actions
-- Add: `AWS_ROLE_ARN` (the OIDC role ARN from Terraform output)
+- Add: `AWS_ROLE_ARN` — the **full ARN**, e.g. `arn:aws:iam::ACCOUNT_ID:role/petclinic-github-actions-role`
+  (NOT just the role name — `configure-aws-credentials` fails with
+  `Source Account ID is needed if the Role Name is provided and not the Role Arn` if you paste only the name)
 - Add: `AWS_REGION` = `eu-central-1`
 - Add: `AWS_ACCOUNT_ID` (your AWS account ID)
-- Add: `PLATFORM_REPO_TOKEN` (GitHub PAT with repo write access to platform repo)
+- Add: `PLATFORM_REPO_TOKEN` (GitHub fine-grained PAT, scoped to ONLY the platform repo,
+  permission: Contents → Read and write)
+
+> ⚠️ **CRITICAL — the token must be added to BOTH repos.** The app repo needs `PLATFORM_REPO_TOKEN`
+> to fire the `repository_dispatch` event. But the **platform repo's own workflow**
+> (`update-image-tags.yml`) ALSO needs the same token as its own secret, because its `actions/checkout`
+> step needs write-back permission to push the commit. The default `github-actions[bot]` token a
+> workflow gets automatically is read-only by default and will fail with:
+> `remote: Permission to .../petclinic-platform.git denied to github-actions[bot]` — `403`.
+> Fix: add `with: token: ${{ secrets.PLATFORM_REPO_TOKEN }}` under the `actions/checkout@v4` step
+> in `update-image-tags.yml`, AND add `PLATFORM_REPO_TOKEN` as a secret in the **platform repo too**,
+> not just the app repo.
 
 ### Create CI workflows with Kimchi
 
@@ -1010,8 +1035,7 @@ kimchi
 ### Kimchi session tips
 
 ```
-# Always start with a plan — free, no execution
-kimchi --plan
+# Always start with a plan — free, no execution.claude/kimchi --plan
 
 # For focused tasks, be specific:
 "Write terraform/modules/rds/outputs.tf — output endpoint, port, db_instance_id, secret_arn only. No explanation needed."
@@ -1027,6 +1051,64 @@ kimchi --plan
 
 ## 20. Troubleshooting
 
+### Real issues hit during this build (most valuable section!)
+
+**`unsupported Kubernetes version 1.29`**
+AWS periodically drops support for old EKS versions. Bump `cluster_version` to a current
+supported version (1.32 worked at time of writing). Check AWS docs for current supported versions.
+
+**`InvalidParameterCombination: not eligible for Free Tier` on node launch**
+Some free-credit AWS accounts restrict On-Demand launches to Free Tier eligible instance types only.
+`t3.medium`/`t3.large` got rejected; `c7i-flex.large` worked. Check
+`aws autoscaling describe-scaling-activities --auto-scaling-group-name <asg-name>` to see the real
+rejection reason — `kubectl get nodes` showing nothing just means "not ready yet", it won't tell you why.
+
+**`0/2 nodes are available: 2 Too many pods`**
+Small instance types (t3.medium) only allow ~11 pods per node due to AWS's ENI/IP-based pod limit —
+not a CPU/memory limit. Switch to a larger instance type. Check current limit with:
+`kubectl get nodes -o jsonpath='{.items[*].status.allocatable.pods}'`
+
+**EKS node group instance type change requires AMI type change too**
+Changing from an ARM instance type (`t4g.small`) to an x86 type (`t3.large`, `c7i-flex.large`) will
+fail unless you also change `ami_type` from `AL2_ARM_64` to `AL2_x86_64` in the node group resource.
+Terraform won't catch this for you — it's an AWS-side validation error at apply time.
+
+**`config-server` crash-looping: `RefNotFoundException: Ref readiness cannot be resolved`**
+Spring Cloud Config Server interprets URL paths as `/{application}/{profile}/{label}` where `label`
+is a Git branch/ref. If your Kubernetes readinessProbe path is `/actuator/health/readiness`, and your
+probe/ingress routing isn't scoped correctly, Config Server can mistake `readiness` for a Git label
+and try to checkout a branch called "readiness" that doesn't exist. Fix: use a distinct, non-colliding
+probe path (e.g. plain `/actuator/health` instead of the readiness/liveness sub-paths) for config-server
+specifically, or scrape it on a separate management port.
+
+**Pods stuck in `Init:0/2` forever, with `ImagePullBackOff` upstream**
+Init containers wait for `config-server`/`discovery-server` to be reachable by hostname. If your Helm
+release name adds a suffix (e.g. ArgoCD creating `config-server-dev` from a release named `dev`), but
+init container scripts hardcode `config-server:8888`, you get permanent DNS failures
+(`wget: bad address 'config-server:8888'`). Fix: add `fullnameOverride: config-server` (etc.) to each
+service's Helm values so the K8s Service name matches what other services expect, regardless of the
+ArgoCD Application/release name.
+
+**Docker push failing repeatedly with `TLS handshake timeout` / `broken pipe`**
+Large image layers (100MB+) over an unstable connection will fail mid-transfer. Docker resumes from
+already-uploaded layers on retry (`Layer already exists`), so just retry — don't rebuild. A simple
+retry-with-backoff loop, or pushing one image at a time instead of in a batch, helps avoid one failure
+killing an entire loop.
+
+**`repository_dispatch` workflow runs but never appears in the target repo's Actions tab**
+Means the dispatch never arrived — check the sending job's logs for the dispatch step specifically;
+a missing/wrong-scoped PAT fails silently in some action versions. Confirm the PAT has write access
+to the **exact target repo** and hasn't expired.
+
+**Re-running a failed GitHub Actions job uses the OLD workflow file**
+"Re-run jobs" replays the workflow version that existed when that run was originally triggered — it
+does NOT pick up fixes you've since pushed to the workflow file. If you fixed the workflow YAML itself,
+you need a brand new trigger (a real commit, or a fresh dispatch), not a re-run of the old failed one.
+
+---
+
+### Common setup issues
+
 ### Kimchi pasting issue in WSL
 
 Right-click in terminal to paste, or use `Shift+Insert`.
@@ -1037,6 +1119,11 @@ If the browser callback times out, select **"Use a Kimchi API key"** instead:
 1. Go to `https://app.kimchi.dev/api-keys`
 2. Create a new API key
 3. Paste it in the terminal (right-click to paste in WSL)
+
+### AWS CLI shows old/wrong version after reinstalling
+
+WSL can have multiple `aws` binaries on PATH (`~/.local/bin`, `/usr/local/bin`, snap). Check with
+`which -a aws`, then either fix your `PATH` order in `~/.bashrc` or symlink the correct one.
 
 ### terraform apply fails with state lock error
 
@@ -1052,11 +1139,11 @@ aws s3 rm s3://petclinic-terraform-state-{ACCOUNT_ID}/dev/terraform.tfstate.tflo
 
 ```bash
 kubectl get nodes
-# If still NotReady after 10 minutes:
-aws eks describe-nodegroup \
-  --cluster-name petclinic-dev \
-  --nodegroup-name petclinic-dev-nodes \
-  --region eu-central-1
+# If still NotReady after 10 minutes, check the ASG directly — EKS often won't surface the real error:
+aws autoscaling describe-scaling-activities \
+  --auto-scaling-group-name <asg-name-from-aws-console-or-describe-nodegroup> \
+  --region eu-central-1 \
+  --query "Activities[*].[StatusCode,StatusMessage]"
 ```
 
 ### Pod in CrashLoopBackOff
@@ -1082,10 +1169,15 @@ kubectl logs deployment/config-server -n petclinic-dev --tail=50
 kubectl logs deployment/discovery-server -n petclinic-dev --tail=50
 ```
 
-### Image pull error from ECR
+### Image pull error from ECR — `not found`
 
+Means the tag doesn't actually exist in ECR (often a push failed silently). Verify first:
 ```bash
-# Re-authenticate Docker to ECR
+aws ecr describe-images --repository-name petclinic-dev/{service} \
+  --region eu-central-1 --query "imageDetails[].imageTags"
+```
+If empty `[]`, the image was never pushed — re-push it. If it exists but still fails, re-authenticate:
+```bash
 aws ecr get-login-password --region eu-central-1 | \
   docker login --username AWS \
   --password-stdin {ACCOUNT_ID}.dkr.ecr.eu-central-1.amazonaws.com
@@ -1095,17 +1187,17 @@ aws ecr get-login-password --region eu-central-1 | \
 
 ## 21. Cost Reference
 
-| Component | Running | Stopped |
+| Component | Running | Stopped (nodes=0) |
 |-----------|---------|---------|
-| EKS control plane | ~$3.30/day | ~$3.30/day (always on) |
-| EC2 nodes (2x t4g.small) | ~$0/day (free trial) | $0 |
-| RDS db.t4g.micro | ~$0/day (free tier) | $0 |
+| EKS control plane | ~$3.30/day | ~$3.30/day (always on — can't be paused) |
+| EC2 nodes (2x c7i-flex.large) | varies — check your account's free tier eligibility | $0 |
+| RDS db.t3.micro | ~$0/day (free tier) | $0 |
 | ECR storage | ~$0.05/day | $0.05/day |
-| **Total active** | **~$3.35/day** | **~$3.35/day** |
 
-> The EKS control plane is the main cost. If you stop working for more than 3 days,
-> run `terraform destroy` to avoid accumulating charges, then rebuild when you return.
-> Rebuilding from Terraform takes about 20-30 minutes.
+> The EKS control plane is the unavoidable fixed cost. If you stop working for more than a few days,
+> `terraform destroy` to avoid accumulating charges, then rebuild when you return — your Terraform
+> code in Git is the source of truth, so nothing is lost. Rebuilding takes about 20-30 minutes for
+> infra, plus re-pushing Docker images if ECR was also destroyed.
 
 ### Destroy and rebuild
 
@@ -1115,10 +1207,48 @@ cd terraform/environments/dev
 terraform destroy
 
 # Rebuild later
+terraform plan -out plan.out
 terraform apply plan.out
-aws eks update-kubeconfig --name petclinic-dev --region eu-central-1
+aws eks update-kubeconfig --name petclinic-dev --region eu-central-1 --profile chelsea-cloud
 kubectl apply -f k8s/argocd/applications/dev/
 ```
+
+---
+
+## 22. Useful Port-Forward Commands
+
+Once everything is deployed, these are the access points you'll use daily:
+
+```bash
+# App (Spring Petclinic UI)
+kubectl port-forward svc/api-gateway -n petclinic-dev 8080:8080
+# → http://localhost:8080
+
+# ArgoCD
+kubectl port-forward svc/argocd-server -n argocd 9999:443
+# → https://localhost:9999  (admin / get password below)
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d && echo
+
+# Grafana
+kubectl port-forward svc/kube-prometheus-stack-grafana -n monitoring 3000:80
+# → http://localhost:3000  (admin / prom-operator, unless you changed it)
+
+# Prometheus
+kubectl port-forward svc/kube-prometheus-stack-prometheus -n monitoring 9090:9090
+# → http://localhost:9090
+
+# Alertmanager
+kubectl port-forward svc/kube-prometheus-stack-alertmanager -n monitoring 9093:9093
+# → http://localhost:9093
+
+# Zipkin
+kubectl port-forward svc/zipkin -n monitoring 9411:9411
+# → http://localhost:9411
+```
+
+> Each port-forward blocks its terminal — use a separate terminal tab per service, or background
+> them with `&`. If you get `address already in use`, a previous port-forward is still running
+> somewhere — find and kill it, or just use a different local port.
 
 ---
 
