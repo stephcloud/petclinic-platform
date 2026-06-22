@@ -3,6 +3,8 @@
 > Deploy Google's Spring Petclinic Microservices on AWS using Terraform, GitHub Actions, ArgoCD, Kubernetes, Helm, Prometheus, and Grafana.
 > Written for beginners. Every step explained. Free tier optimized.
 
+> 🔧 **Before you begin:** Replace all `{YOUR_GITHUB_ORG}`, `{YOUR_AWS_PROFILE}`, and `{YOUR_ACCOUNT_ID}` placeholders throughout this guide with your actual values.
+
 > For infrastructure architecture details and tech stack, see [README-ARCHITECTURE.md](README-ARCHITECTURE.md)
 
 ---
@@ -81,8 +83,8 @@ This project uses **two GitHub repositories** — this is the standard GitOps pa
 
 | Repo | Purpose | Who modifies it |
 |------|---------|----------------|
-| `stephcloud/spring-petclinic-microservices` | Application source code, Dockerfiles, CI pipelines | Developers (READ-ONLY for infra) |
-| `stephcloud/petclinic-platform` | Terraform, Helm, ArgoCD, K8s manifests | Infrastructure team (YOU) |
+| `{YOUR_GITHUB_ORG}/spring-petclinic-microservices` | Application source code, Dockerfiles, CI pipelines | Developers (READ-ONLY for infra) |
+| `{YOUR_GITHUB_ORG}/petclinic-platform` | Terraform, Helm, ArgoCD, K8s manifests | Infrastructure team (YOU) |
 
 ### How They Connect
 
@@ -248,7 +250,7 @@ git --version
 ### Configure AWS CLI Profile
 
 ```bash
-aws configure --profile chelsea-cloud
+aws configure --profile {YOUR_AWS_PROFILE}
 # AWS Access Key ID: (paste from CSV)
 # AWS Secret Access Key: (paste from CSV)
 # Default region name: eu-central-1
@@ -258,20 +260,20 @@ aws configure --profile chelsea-cloud
 ### Verify AWS access
 
 ```bash
-aws sts get-caller-identity --profile chelsea-cloud
+aws sts get-caller-identity --profile {YOUR_AWS_PROFILE}
 # Should return your account ID, user ARN
 ```
 
 ### Set profile for your session
 
 ```bash
-export AWS_PROFILE=chelsea-cloud
+export AWS_PROFILE={YOUR_AWS_PROFILE}
 export AWS_DEFAULT_REGION=eu-central-1
 ```
 
 > Add these exports to your `~/.bashrc` so they persist across sessions:
 > ```bash
-> echo 'export AWS_PROFILE=chelsea-cloud' >> ~/.bashrc
+> echo 'export AWS_PROFILE={YOUR_AWS_PROFILE}' >> ~/.bashrc
 > echo 'export AWS_DEFAULT_REGION=eu-central-1' >> ~/.bashrc
 > source ~/.bashrc
 > ```
@@ -282,11 +284,11 @@ export AWS_DEFAULT_REGION=eu-central-1
 
 ```bash
 # Clone the platform repo (this is where you work)
-git clone https://github.com/stephcloud/petclinic-platform.git
+git clone https://github.com/{YOUR_GITHUB_ORG}/petclinic-platform.git
 cd petclinic-platform
 
 # Clone the app repo (read-only reference)
-git clone https://github.com/stephcloud/spring-petclinic-microservices.git
+git clone https://github.com/{YOUR_GITHUB_ORG}/spring-petclinic-microservices.git
 ```
 
 ---
@@ -330,8 +332,8 @@ This project uses a two-repo GitOps pattern:
 
 | Repo | URL | Purpose | Can Agent Modify? |
 |------|-----|---------|-------------------|
-| petclinic-platform | github.com/stephcloud/petclinic-platform | Infrastructure | ✅ YES |
-| spring-petclinic-microservices | github.com/stephcloud/spring-petclinic-microservices | App source code | ❌ READ-ONLY |
+| petclinic-platform | github.com/{YOUR_GITHUB_ORG}/petclinic-platform | Infrastructure | ✅ YES |
+| spring-petclinic-microservices | github.com/{YOUR_GITHUB_ORG}/spring-petclinic-microservices | App source code | ❌ READ-ONLY |
 
 ### How the two repos work together
 
@@ -388,8 +390,8 @@ terraform apply plan.out   # NEVER apply without a saved plan
 - Per-service config in helm-values/{service}.yaml
 - Per-env config in helm-values/{dev,prod}.yaml
 - Validate: helm template + helm lint before committing
-- ECR registry dev: 533267262133.dkr.ecr.eu-central-1.amazonaws.com/petclinic-dev
-- ECR registry prod: 533267262133.dkr.ecr.eu-central-1.amazonaws.com/petclinic-prod
+- ECR registry dev: {YOUR_ACCOUNT_ID}.dkr.ecr.eu-central-1.amazonaws.com/petclinic-dev
+- ECR registry prod: {YOUR_ACCOUNT_ID}.dkr.ecr.eu-central-1.amazonaws.com/petclinic-prod
 
 ## ArgoCD Conventions
 
@@ -552,7 +554,7 @@ Before any Terraform can run, you need an S3 bucket and DynamoDB table to store 
 cd ~/petclinic-platform
 
 # Set your account ID
-export AWS_PROFILE=chelsea-cloud
+export AWS_PROFILE={YOUR_AWS_PROFILE}
 export AWS_DEFAULT_REGION=eu-central-1
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 echo "Your Account ID: $ACCOUNT_ID"
@@ -876,7 +878,7 @@ argocd app list
 
 ```bash
 # Get your GitHub org/repo
-GITHUB_ORG="stephcloud"
+GITHUB_ORG="{YOUR_GITHUB_ORG}"
 APP_REPO="spring-petclinic-microservices"
 PLATFORM_REPO="petclinic-platform"
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
@@ -889,7 +891,7 @@ Create Terraform resources for GitHub Actions OIDC federation in
 terraform/environments/dev/github-actions.tf:
 - OIDC provider: token.actions.githubusercontent.com
 - IAM role: petclinic-github-actions-role
-- Trust policy: repo:stephcloud/spring-petclinic-microservices:ref:refs/heads/main
+- Trust policy: repo:{YOUR_GITHUB_ORG}/spring-petclinic-microservices:ref:refs/heads/main
 - Permissions: ECR push only (ecr:GetAuthorizationToken,
   ecr:BatchCheckLayerAvailability, ecr:PutImage, ecr:InitiateLayerUpload,
   ecr:UploadLayerPart, ecr:CompleteLayerUpload)
@@ -1209,7 +1211,7 @@ terraform destroy
 # Rebuild later
 terraform plan -out plan.out
 terraform apply plan.out
-aws eks update-kubeconfig --name petclinic-dev --region eu-central-1 --profile chelsea-cloud
+aws eks update-kubeconfig --name petclinic-dev --region eu-central-1 --profile {YOUR_AWS_PROFILE}
 kubectl apply -f k8s/argocd/applications/dev/
 ```
 
